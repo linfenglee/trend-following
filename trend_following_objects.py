@@ -25,15 +25,37 @@ class MarketInfo(BaseData):
     Market Information
     """
 
-    rho: float = 0       # interest rate
-    alpha: float = 0     # buy transaction fee
-    theta: float = 0      # sell transaction fee
+    __rho: float = 0       # interest rate
+    __alpha: float = 0     # buy transaction fee
+    __theta: float = 0      # sell transaction fee
+
+    @property
+    def rho(self):
+        return self.__rho
+
+    @property
+    def alpha(self):
+        return self.__alpha
+
+    @property
+    def theta(self):
+        return self.__theta
 
     def __post_init__(self):
         """"""
-        self.upper_boundary = np.log(1 + self.theta)
-        self.lower_boundary = np.log(1 - self.alpha)
+        self.upper_boundary = np.log(1 + self.__theta)
+        self.lower_boundary = np.log(1 - self.__alpha)
         
+
+@dataclass
+class RegimeInfo(BaseData):
+    """
+    Market Regime Information
+    """
+
+    bull_profit: float
+    bear_loss: float
+
 
 @dataclass
 class ModelData(BaseData):
