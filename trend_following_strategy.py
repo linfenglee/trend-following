@@ -34,16 +34,26 @@ class EstimationParameter(object):
     def __str__(self):
         return f"Estimate Parameters for {self.vt_symbol}"
     
+
     def get_para_info(self, state):
 
-        # parameter estimation
+        # divide into bull and bear market regimes
         self.find_bull_bear(state)
-        self.lambda_estimation()
+        self.seperate_bull_bear()
 
+        # parameter estimations
+        self.parameter_estimation()
 
         return self.para_info
 
+
+
     def find_bull_bear(self, state):
+        """
+        Find the bull and bear market regimes,
+        and keep the info in self.regimes (Dict)
+        """
+
         n = len(self.close_array)
         signal = state
         max_s, min_s = self.close_array[0], self.close_array[0]
@@ -83,83 +93,64 @@ class EstimationParameter(object):
                     max_s = self.close_array[i]
                 else:
                     min_s = min(self.close_array[i], min_s)
-        # return self.regimes[1:]
 
-    def lambda_estimation(self):
-        bull_t, bear_t = [], []
-        for regime in self.regimes:
-            t = (pd.to_datetime(regime["end_date"]) - pd.to_datetime(regime["start_date"])).days / 365
-            if regime["state"] == "bull":
-                bull_t.append(t)
-            elif regime["state"] == "bear":
-                bear_t.append(t)
-            else:
-                print("Invalid Market Regime:", regime)
-        
-        bull_t, bear_t = np.array(bull_t), np.array(bear_t)
-
-        self.para_info.bull_lambda = (1 / bull_t).mean()
-        self.para_info.bear_lambda = (1 / bear_t).mean()
-
-
-    def seperate_bull_bear(self):
-        bull_date = []
-        bear_date = []
-        bull_indice = []
-        bear_indice = []
-        n = len(regimes)
-        for i in range(n):
-            state = regimes[i]
-            if state[0] == 'bull':
-                bull_date.append(state[1])
-                bull_indice.append(state[2])
-            else:
-                bear_date.append(state[1])
-                bear_indice.append(state[2])
-
-            if i == n-1:
-                if state[0] == 'bull':
-                    bear_date.append(state[3])
-                    bear_indice.append(state[4])
-                else:
-                    bull_date.append(state[3])
-                    bull_indice.append(state[4])
-
-        bull_date, bear_date = np.array(bull_date), np.array(bear_date)
-        bull_indice, bear_indice = np.array(bull_indice), np.array(bear_indice)
-
-        return bull_date, bull_indice, bear_date, bear_indice
-
-
-
-    def seperate_bull_bear(self):
-        bull_date = []
-        bear_date = []
-        bull_indice = []
-        bear_indice = []
-        for regime in self.regimes[1:]:
-            if regime["state"] == 'bull':
-                bull_date.append()
-                bull_indice.append(state[2])
-            else:
-                bear_date.append(state[1])
-                bear_indice.append(state[2])
-
-            if i == n-1:
-                if state[0] == 'bull':
-                    bear_date.append(state[3])
-                    bear_indice.append(state[4])
-                else:
-                    bull_date.append(state[3])
-                    bull_indice.append(state[4])
-
-        bull_date, bear_date = np.array(bull_date), np.array(bear_date)
-        bull_indice, bear_indice = np.array(bull_indice), np.array(bear_indice)
-
-        return bull_date, bull_indice, bear_date, bear_indice
 
     def get_regimes(self):
         return self.regimes
+
+
+    def seperate_bull_bear(self):
+        """
+        Seperate bull and bear for futher estimation
+        """
+
+        bull_periods, bear_periods = [], []
+        bull_data, bear_data = [], []
+        for regime in self.regimes:
+            start_date = pd.to_datetime(regime["start_date"])
+            end_date = pd.to_datetime(regime["end_date"])
+            data_batch = self.data[(self.data.index > start_date) & (self.data.index < end_date)]["log_rtn"].values.tolist()
+            period = (pd.to_datetime(regime["end_date"]) - pd.to_datetime(regime["start_date"])).days / 365
+            if regime["state"] == "bull":
+                bull_periods.append(period)
+                bull_data = bull_data + data_batch
+            elif regime["state"] == "bear":
+                bear_periods.append(period)
+                bear_data = bear_data + data_batch
+            else:
+                print("Invalid Market Regime:", regime)
+        
+        self.bull_data, self.bear_data = np.array(bull_data), np.array(bear_data)
+        self.bull_periods, self.bear_periods = np.array(bull_periods), np.array(bear_periods)
+
+    
+
+    def parameter_estimation(self):
+        """
+        Estimate lambda, mu, and sigma
+        """
+
+        # lambda estimation
+        self.para_info.bull_lambda = (1 / self.bull_periods).mean()
+        self.para_info.bear_lambda = (1 / self.bear_periods).mean()
+
+        # sigma estimation
+        bull_sigma = np.sqrt(240 * np.power(self.bull_data, 2).mean())
+        bear_sigma = np.sqrt(240 * np.power(self.bear_data, 2).mean())
+        self.para_info.bull_sigma = bull_sigma
+        self.para_info.bear_sigma = bear_sigma
+
+        # constant sigma estimation
+        bull_bear_data = self.data["log_rtn"].values[1:]
+        constant_sigma = np.sqrt(240 * np.power(bull_bear_data, 2).mean())
+        self.para_info.constant_sigma = constant_sigma
+
+        # mu estimation
+        bull_mu = np.power(bull_sigma, 2) / 2 + 240 * self.bull_data.mean()
+        bear_mu = np.power(bear_sigma, 2) / 2 + 240 * self.bear_data.mean()
+        self.para_info.bull_mu = bull_mu
+        self.para_info.bear_mu = bear_mu
+
 
 
 
