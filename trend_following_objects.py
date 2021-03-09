@@ -8,7 +8,6 @@ from datetime import datetime
 import numpy as np
 
 
-
 @dataclass
 class BaseData:
     """
@@ -90,8 +89,3 @@ class ParameterData(BaseData):
 
     bull_lambda: float = 0
     bear_lambda: float = 0
-
-
-
-
-    
