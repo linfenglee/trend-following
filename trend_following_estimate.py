@@ -272,7 +272,39 @@ class EstimationParameter(object):
 class EstimationProb(object):
     """"""
 
-    def __init__(self):
+    def __init__(self, para_info: ParameterData):
+        """"""
+
+        # Parameter Info
+        self.bull_mu = para_info.bull_mu
+        self.bear_mu = para_info.bear_mu
+        self.bull_sigma = para_info.bull_sigma
+        self.bear_sigma = para_info.bear_sigma
+        self.const_sigma = para_info.constant_sigma
+        self.bull_lambda = para_info.bull_lambda
+        self.bear_lambda = para_info.bear_lambda
+
+        self.diff_mu = self.bull_mu - self.bear_mu
+        self.diff_lambda = self.bull_lambda - self.bear_lambda
+
+    def calc_gt(self, pt):
+        """"""
+
+        a = -self.diff_lambda * pt + self.bear_lambda
+        b = -self.diff_mu * pt * (1 - pt) * (self.diff_mu * pt + self.bear_mu - self.const_sigma)
+        gt = a + b
+        return gt
+
+    def update_pt(self, pt):
+        """"""
+
+        gt = self.calc_gt(pt)
+        new_pt = pt + gt * self.dt + self.diff_mu * pt * (1 - pt) / np.power(self.const_sigma, 2)
+        update_pt = min(max(new_pt, 0), 1)
+
+        return update_pt
+
+    def estimate_pts(self):
         """"""
 
         pass
