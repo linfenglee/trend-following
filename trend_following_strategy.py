@@ -49,16 +49,19 @@ class EstimationParameter(object):
         print(f"Delete {self.vt_symbol} Parameter Estimation Object")
 
     def close(self):
+        """"""
         pass
 
     def get_regimes(self) -> List:
         """"""
+
         if not self.regimes:
             self.find_bull_bear()
         return self.regimes
 
     def get_initial_state(self) -> Tuple:
         """"""
+
         initial_state = None
         start_price = self.close_array[0]
         bull_price = start_price * (1 + self.bull_p)
@@ -263,8 +266,9 @@ class EstimationParameter(object):
 
         fig = go.Figure(data=data, layout=layout)
 
-        plotly.offline.init_notebook_mode()
-        plotly.offline.iplot(fig, filename='scatter-mode')
+        # plotly.offline.init_notebook_mode()
+        # plotly.offline.iplot(fig, filename='scatter-mode')
+        plotly.offline.plot(fig, filename='bull_bear_regime.html')
 
 
 class TrendFollowing(object):
@@ -284,6 +288,7 @@ class TrendFollowing(object):
         self.upper_boundary = market_info.upper_boundary
         self.lower_boundary = market_info.lower_boundary
 
+        # Model Info
         self.T = model_info.T
         self.I = model_info.I
         self.N = model_info.N
@@ -292,6 +297,7 @@ class TrendFollowing(object):
         self.epsilon = model_info.epsilon
         self.omega = model_info.omega
 
+        # Parameter Info
         self.bull_mu = para_info.bull_mu
         self.bear_mu = para_info.bear_mu
         self.bull_sigma = para_info.bull_sigma
@@ -404,33 +410,36 @@ class TrendFollowing(object):
             )
             f_p[i-1] = (self.bull_mu - self.bear_mu)*i*self.dp + self.bear_mu - np.power(sigma, 2)/2 - self.rho
 
+            para_a = eta * self.dt / np.power(self.dp, 2)
+            para_b = b1 * self.dt / self.dp
+
             # upwind treatment
             if b1 >= 0:
                 if i == 1:
-                    f_d = -eta / np.power(self.dp, 2) * self.dt
-                    self.matrix_A[i-1, i-1] = (1 + 2*eta*self.dt/np.power(self.dp, 2) + b1*self.dt/self.dp)
-                    self.matrix_A[i-1, i] = -(eta*self.dt/np.power(self.dp, 2) + b1*self.dt/self.dp)
+                    f_d = -para_a
+                    self.matrix_A[i-1, i-1] = 1 + 2 * para_a + para_b
+                    self.matrix_A[i-1, i] = -(para_a + para_b)
                 elif i != self.I-1:
-                    self.matrix_A[i-1, i-2] = -eta/np.power(self.dp, 2) * self.dt
-                    self.matrix_A[i-1, i-1] = (1 + 2*eta*self.dt/np.power(self.dp, 2) + b1*self.dt/self.dp)
-                    self.matrix_A[i-1, i] = -(eta*self.dt/np.power(self.dp, 2) + b1*self.dt/self.dp)
+                    self.matrix_A[i-1, i-2] = -para_a
+                    self.matrix_A[i-1, i-1] = 1 + 2 * para_a + para_b
+                    self.matrix_A[i-1, i] = -(para_a + para_b)
                 else:
-                    self.matrix_A[i-1, i-2] = -eta * self.dt / np.power(self.dp, 2)
-                    self.matrix_A[i-1, i-1] = (1 + 2*eta*self.dt/np.power(self.dp, 2) + b1*self.dt/self.dp)
-                    f_u = -(eta*self.dt/np.power(self.dp, 2) + b1*self.dt/self.dp)
+                    self.matrix_A[i-1, i-2] = -para_a
+                    self.matrix_A[i-1, i-1] = (1 + 2 * para_a + para_b)
+                    f_u = -(para_a + para_b)
             else:
                 if i == 1:
-                    f_d = -(eta*self.dt/np.power(self.dp, 2) - b1*self.dt/self.dp)
-                    self.matrix_A[i-1, i-1] = (1 + 2*eta*self.dt/np.power(self.dp, 2) - b1*self.dt/self.dp)
-                    self.matrix_A[i-1, i] = -eta*self.dt/np.power(self.dp, 2)
+                    f_d = -(para_a - para_b)
+                    self.matrix_A[i-1, i-1] = (1 + 2 * para_a - para_b)
+                    self.matrix_A[i-1, i] = -para_a
                 elif i != self.I-1:
-                    self.matrix_A[i-1, i-2] = -(eta*self.dt/np.power(self.dp, 2) - b1*self.dt/self.dp)
-                    self.matrix_A[i-1, i-1] = (1 + 2*eta*self.dt/np.power(self.dp, 2) - b1*self.dt/self.dp)
-                    self.matrix_A[i-1, i] = -eta*self.dt/np.power(self.dp, 2)
+                    self.matrix_A[i-1, i-2] = -(para_a - para_b)
+                    self.matrix_A[i-1, i-1] = (1 + 2 * para_a - para_b)
+                    self.matrix_A[i-1, i] = -para_a
                 else:
-                    self.matrix_A[i-1, i-2] = -(eta*self.dt/np.power(self.dp, 2) - b1*self.dt/self.dp)
-                    self.matrix_A[i-1, i-1] = (1 + 2*eta*self.dt/np.power(self.dp, 2) - b1*self.dt/self.dp)
-                    f_u = -eta*self.dt/np.power(self.dp, 2)
+                    self.matrix_A[i-1, i-2] = -(para_a - para_b)
+                    self.matrix_A[i-1, i-1] = (1 + 2 * para_a - para_b)
+                    f_u = -para_a
 
         # for loop
         for n in range(self.N-1, -1, -1):
@@ -472,8 +481,7 @@ class TrendFollowing(object):
         )
         fig = go.Figure(data=data, layout=layout)
 
-        plotly.offline.init_notebook_mode()
-        plotly.offline.iplot(fig, filename='scatter-mode')
+        plotly.offline.plot(fig, filename='bs_region.html')
 
     def main(self):
         """"""
