@@ -1,10 +1,4 @@
-"""
-Basic data structure used for trend following strategy.
-"""
-
 from dataclasses import dataclass
-from datetime import datetime
-
 import numpy as np
 
 
@@ -15,7 +9,7 @@ class BaseData:
     and should inherit base data.
     """
 
-    vt_symbol: str
+    vt_symbol: str = ""
 
 
 @dataclass
@@ -24,9 +18,9 @@ class MarketInfo(BaseData):
     Market Information
     """
 
-    __rho: float = 0       # interest rate
-    __alpha: float = 0     # buy transaction fee
-    __theta: float = 0      # sell transaction fee
+    __rho: float = 0.068       # interest rate
+    __alpha: float = 0.001     # buy transaction fee
+    __theta: float = 0.001      # sell transaction fee
 
     @property
     def rho(self):
@@ -52,8 +46,8 @@ class RegimeInfo(BaseData):
     Market Regime Information
     """
 
-    bull_profit: float
-    bear_loss: float
+    bull_profit: float = 0.2
+    bear_loss: float = 0.2
 
 
 @dataclass
@@ -62,17 +56,17 @@ class ModelData(BaseData):
     Basic setting to implement fully-implicit finite difference method
     """
 
-    T: float
-    I: int
-    N: int
+    T: float = 1
+    I: int = 2_000
+    N: int = 20_000
 
     def __post_init__(self):
         """"""
         self.dt = self.T / self.N
         self.dp = 1 / self.I
 
-    epsilon: float
-    omega: float
+    epsilon: float = 1 / 10_000_000
+    omega: float = 1.6
 
 
 @dataclass
@@ -80,12 +74,12 @@ class ParameterData(BaseData):
     """
     Parameter Data used in trend following strategy
     """
-    bull_mu: float = 0
-    bear_mu: float = 0
+    bull_mu: float = 0.18
+    bear_mu: float = -0.77
 
-    bull_sigma: float = 0
-    bear_sigma: float = 0
-    constant_sigma: float = 0
+    bull_sigma: float = 0.184
+    bear_sigma: float = 0.184
+    constant_sigma: float = 0.184
 
-    bull_lambda: float = 0
-    bear_lambda: float = 0
+    bull_lambda: float = 0.36
+    bear_lambda: float = 2.53
