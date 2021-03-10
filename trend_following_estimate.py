@@ -1,10 +1,12 @@
 from typing import Tuple, List
-from datetime import datetime
+from datetime import datetime, timedelta
 import numpy as np
 import pandas as pd
 from pandas import DataFrame
 import plotly
 import plotly.graph_objs as go
+
+import tushare as ts
 
 from trend_following_objects import (
     ANNUAL_DAYS,
@@ -301,7 +303,7 @@ class EstimationProb(object):
         self.bear_lambda = para_info.bear_lambda
 
         self.diff_mu = self.bull_mu - self.bear_mu
-        self.diff_lambda = self.bull_lambda - self.bear_lambda
+        self.sum_lambda = self.bull_lambda + self.bear_lambda
 
     def __str__(self):
         """"""
@@ -320,14 +322,16 @@ class EstimationProb(object):
         self.bear_lambda = para_info.bear_lambda
 
         self.diff_mu = self.bull_mu - self.bear_mu
-        self.diff_lambda = self.bull_lambda - self.bear_lambda
+        self.sum_lambda = self.bull_lambda + self.bear_lambda
 
     def calc_gt(self, pt: float) -> float:
         """"""
 
-        a = -self.diff_lambda * pt + self.bear_lambda
-        b = -self.diff_mu * pt * (1 - pt) * (self.diff_mu * pt + self.bear_mu - self.const_sigma)
-        gt = a + b
+        gt_1 = -self.sum_lambda * pt + self.bear_lambda
+        coef_dlns = self.diff_mu * pt * (1 - pt) / np.power(self.const_sigma, 2)
+        adjust_term = (self.diff_mu * pt + self.bear_mu - np.power(self.const_sigma, 2) / 2)
+        gt_2 = -coef_dlns * adjust_term
+        gt = gt_1 + gt_2
         return gt
 
     def update_pt(self, pt: float, dlns: float) -> float:
@@ -349,7 +353,7 @@ class EstimationProb(object):
         pt = start_p
         for i in range(1, len(dts), 1):
             pre_dt, dt = dts[i-1], dts[i]
-            dlns = lns[dt] / lns[pre_dt]
+            dlns = lns[dt] - lns[pre_dt]
             new_pt = self.update_pt(pt, dlns)
             pts.loc[dt] = [new_pt, dlns]
             pt = new_pt
@@ -380,14 +384,33 @@ class EstimationProb(object):
 class EstimationEngine(object):
     """"""
 
-    def __init__(self, vt_symbol: str, data: DataFrame, price_type: str):
+    def __init__(self, vt_symbol: str, price_type: str):
         """"""
+
+        data = self.get_data(vt_symbol)
 
         regime_info = RegimeInfo(vt_symbol)
         self.est_para = EstimationParameter(data, price_type, regime_info)
 
         para_info = ParameterData(vt_symbol)
         self.est_prob = EstimationProb(data, price_type, para_info)
+
+    @staticmethod
+    def get_data(vt_symbol: str) -> DataFrame:
+        """"""
+        dt = datetime.now()
+        start_year = dt.year - 10
+        end_dt = dt.strftime("%Y%m%d")
+        start_dt = dt.replace(year=start_year).strftime("%Y%m%d")
+
+        pro = ts.pro_api('c3450fdabd780ea8ef13ebdd0230c2e52a5737b05cfb0377eecc2f84')
+        df = pro.daily(ts_code=vt_symbol, start_date=start_dt, end_date=end_dt)
+        df["trade_date"] = pd.to_datetime(df["trade_date"])
+        df.sort_values(by='trade_date', inplace=True)
+        df.set_index("trade_date", inplace=True)
+        df['log_rtn'] = np.log(df['close']).diff()
+
+        return df
 
     def set_regime_info(self, regime_info: RegimeInfo) -> None:
         """"""
@@ -428,6 +451,23 @@ class EstimationEngine(object):
         est_pts = self.estimate_prob(start_dt, start_pt)
 
         return est_para_info, est_pts
+
+
+if __name__ == '__main__':
+    """"""
+
+    ts_code = "000001.SZ"
+    price_type = "close"
+    start_date = datetime(2011, 10, 1)
+    start_prob = 0
+
+    regime_data = RegimeInfo(ts_code, 0.3, 0.3)
+
+    est_engine = EstimationEngine(ts_code, price_type)
+    est_engine.set_regime_info(regime_data)
+    para_data = est_engine.estimate_para()
+    est_engine.set_para_info(para_data)
+    pts = est_engine.estimate_prob(start_date, start_prob)
 
 
 
