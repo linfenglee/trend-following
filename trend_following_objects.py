@@ -2,6 +2,9 @@ from dataclasses import dataclass
 import numpy as np
 
 
+ANNUAL_DAYS = 240
+
+
 @dataclass
 class BaseData:
     """

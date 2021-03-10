@@ -1,4 +1,5 @@
 from typing import Tuple, List
+from datetime import datetime
 import numpy as np
 import pandas as pd
 from pandas import DataFrame
@@ -6,6 +7,7 @@ import plotly
 import plotly.graph_objs as go
 
 from trend_following_objects import (
+    ANNUAL_DAYS,
     RegimeInfo,
     ParameterData
 )
@@ -45,6 +47,13 @@ class EstimationParameter(object):
     def __del__(self):
         """"""
         print(f"Delete {self.vt_symbol} Parameter Estimation Object")
+
+    def set_regime_info(self, regime_info: RegimeInfo) -> None:
+        """"""
+
+        self.vt_symbol = regime_info.vt_symbol
+        self.bull_p = regime_info.bull_profit
+        self.bear_l = regime_info.bear_loss
 
     def close(self):
         """"""
@@ -272,7 +281,33 @@ class EstimationParameter(object):
 class EstimationProb(object):
     """"""
 
-    def __init__(self, para_info: ParameterData):
+    def __init__(
+            self, data: DataFrame, price_type: str, para_info: ParameterData
+    ):
+        """"""
+
+        self.data = data
+        self.vt_symbol = para_info.vt_symbol
+        self.price_array = self.data[price_type]
+        self.dt = 1 / ANNUAL_DAYS
+
+        # Parameter Info
+        self.bull_mu = para_info.bull_mu
+        self.bear_mu = para_info.bear_mu
+        self.bull_sigma = para_info.bull_sigma
+        self.bear_sigma = para_info.bear_sigma
+        self.const_sigma = para_info.constant_sigma
+        self.bull_lambda = para_info.bull_lambda
+        self.bear_lambda = para_info.bear_lambda
+
+        self.diff_mu = self.bull_mu - self.bear_mu
+        self.diff_lambda = self.bull_lambda - self.bear_lambda
+
+    def __str__(self):
+        """"""
+        return f"Estimation for Current {self.vt_symbol} Bull Probability"
+
+    def set_para_info(self, para_info: ParameterData):
         """"""
 
         # Parameter Info
@@ -287,7 +322,7 @@ class EstimationProb(object):
         self.diff_mu = self.bull_mu - self.bear_mu
         self.diff_lambda = self.bull_lambda - self.bear_lambda
 
-    def calc_gt(self, pt):
+    def calc_gt(self, pt: float) -> float:
         """"""
 
         a = -self.diff_lambda * pt + self.bear_lambda
@@ -295,17 +330,105 @@ class EstimationProb(object):
         gt = a + b
         return gt
 
-    def update_pt(self, pt):
+    def update_pt(self, pt: float, dlns: float) -> float:
         """"""
 
-        gt = self.calc_gt(pt)
-        new_pt = pt + gt * self.dt + self.diff_mu * pt * (1 - pt) / np.power(self.const_sigma, 2)
+        coef_dt = self.calc_gt(pt)
+        coef_dlns = self.diff_mu * pt * (1 - pt) / np.power(self.const_sigma, 2)
+        new_pt = pt + coef_dt * self.dt + coef_dlns * dlns
         update_pt = min(max(new_pt, 0), 1)
 
         return update_pt
 
-    def estimate_pts(self):
+    def estimate_pts(self, start_date: datetime, start_p: float) -> DataFrame:
         """"""
 
-        pass
+        lns = np.log(self.price_array[self.price_array.index >= start_date])
+        dts = lns.index.to_numpy()
+        pts = pd.DataFrame(columns=["pt", "dlns"])
+        pt = start_p
+        for i in range(1, len(dts), 1):
+            pre_dt, dt = dts[i-1], dts[i]
+            dlns = lns[dt] / lns[pre_dt]
+            new_pt = self.update_pt(pt, dlns)
+            pts.loc[dt] = [new_pt, dlns]
+            pt = new_pt
+
+        return pts
+
+    @staticmethod
+    def pts_plot(pt_data: DataFrame) -> None:
+        """"""
+
+        trace1 = go.Scatter(
+            x=pt_data.index,
+            y=pt_data["pt"],
+            mode="lines",
+            name="pt"
+        )
+
+        data = [trace1]
+        layout = go.Layout(
+            legend={"x": 1, "y": 1},
+            title="Buy Region & Sell Region"
+        )
+        fig = go.Figure(data=data, layout=layout)
+
+        plotly.offline.plot(fig, filename='pt_process.html')
+
+
+class EstimationEngine(object):
+    """"""
+
+    def __init__(self, vt_symbol: str, data: DataFrame, price_type: str):
+        """"""
+
+        regime_info = RegimeInfo(vt_symbol)
+        self.est_para = EstimationParameter(data, price_type, regime_info)
+
+        para_info = ParameterData(vt_symbol)
+        self.est_prob = EstimationProb(data, price_type, para_info)
+
+    def set_regime_info(self, regime_info: RegimeInfo) -> None:
+        """"""
+
+        self.est_para.set_regime_info(regime_info)
+
+    def set_para_info(self, para_info: ParameterData) -> None:
+        """"""
+
+        self.est_prob.set_para_info(para_info)
+
+    def estimate_para(self):
+        """"""
+
+        est_para_info = self.est_para.get_para_info()
+        return est_para_info
+
+    def estimate_prob(self, start_dt: datetime, start_pt: float) -> DataFrame:
+        """"""
+
+        est_pts = self.est_prob.estimate_pts(start_dt, start_pt)
+        return est_pts
+
+    def main_est(
+            self,
+            regime_info: RegimeInfo,
+            start_dt: datetime,
+            start_pt: float
+    ) -> Tuple:
+        """"""
+
+        self.set_regime_info(regime_info)
+
+        est_para_info = self.estimate_para()
+
+        self.set_para_info(est_para_info)
+
+        est_pts = self.estimate_prob(start_dt, start_pt)
+
+        return est_para_info, est_pts
+
+
+
 
