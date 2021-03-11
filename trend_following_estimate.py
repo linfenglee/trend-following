@@ -3,10 +3,12 @@ from datetime import datetime, timedelta
 import numpy as np
 import pandas as pd
 from pandas import DataFrame
+
 import plotly
 import plotly.graph_objs as go
 
 import tushare as ts
+import pandas_datareader.data as web
 
 from trend_following_objects import (
     ANNUAL_DAYS,
@@ -384,10 +386,13 @@ class EstimationProb(object):
 class EstimationEngine(object):
     """"""
 
-    def __init__(self, vt_symbol: str, price_type: str):
+    def __init__(self, source: str, vt_symbol: str, price_type: str):
         """"""
 
-        data = self.get_data(vt_symbol)
+        if source == "tushare":
+            data = self.get_data_tushare(vt_symbol)
+        else:
+            data = self.get_data_yahoo(vt_symbol)
 
         regime_info = RegimeInfo(vt_symbol)
         self.est_para = EstimationParameter(data, price_type, regime_info)
@@ -396,7 +401,7 @@ class EstimationEngine(object):
         self.est_prob = EstimationProb(data, price_type, para_info)
 
     @staticmethod
-    def get_data(vt_symbol: str) -> DataFrame:
+    def get_data_tushare(vt_symbol: str) -> DataFrame:
         """"""
         dt = datetime.now()
         start_year = dt.year - 10
@@ -409,6 +414,20 @@ class EstimationEngine(object):
         df.sort_values(by='trade_date', inplace=True)
         df.set_index("trade_date", inplace=True)
         df['log_rtn'] = np.log(df['close']).diff()
+
+        return df
+
+    @staticmethod
+    def get_data_yahoo(vt_symbol: str) -> DataFrame:
+        """"""
+
+        end_dt = datetime.now()
+        start_year = end_dt.year - 10
+        start_dt = end_dt.replace(year=start_year)
+
+        df = web.get_data_yahoo(vt_symbol, start_dt, end_dt)
+        df.index = pd.to_datetime(df.index)
+        df['log_rtn'] = np.log(df['adjust_close']).diff()
 
         return df
 
@@ -456,6 +475,7 @@ class EstimationEngine(object):
 if __name__ == '__main__':
     """"""
 
+    data_source = "tushare"
     ts_code = "000001.SZ"
     price_type = "close"
     start_date = datetime(2011, 10, 1)
@@ -463,7 +483,7 @@ if __name__ == '__main__':
 
     regime_data = RegimeInfo(ts_code, 0.3, 0.3)
 
-    est_engine = EstimationEngine(ts_code, price_type)
+    est_engine = EstimationEngine(data_source, ts_code, price_type)
     est_engine.set_regime_info(regime_data)
     para_data = est_engine.estimate_para()
     est_engine.set_para_info(para_data)

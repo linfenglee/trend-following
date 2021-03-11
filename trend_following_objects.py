@@ -21,7 +21,7 @@ class MarketInfo(BaseData):
     Market Information
     """
 
-    __rho: float = 0.068       # interest rate
+    __rho: float = 0.043       # interest rate
     __alpha: float = 0.001     # buy transaction fee
     __theta: float = 0.001      # sell transaction fee
 
