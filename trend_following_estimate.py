@@ -427,6 +427,8 @@ class EstimationEngine(object):
 
         df = web.get_data_yahoo(vt_symbol, start_dt, end_dt)
         df.index = pd.to_datetime(df.index)
+        df.drop(columns=["Volume"], inplace=True)
+        df.columns = ['open', 'high', 'low', 'close', 'adjust_close']
         df['log_rtn'] = np.log(df['adjust_close']).diff()
 
         return df

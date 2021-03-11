@@ -29,6 +29,7 @@ def test_main():
 
 
 def main(
+        source: str,
         ts_code: str,
         price_type: str,
         start_time: datetime,
@@ -40,7 +41,7 @@ def main(
 
     regime_data = RegimeInfo(ts_code, bull_profit, bear_loss)
 
-    est_engine = EstimationEngine(ts_code, price_type)
+    est_engine = EstimationEngine(source, ts_code, price_type)
     est_engine.set_regime_info(regime_data)
     para_data = est_engine.estimate_para()
     est_engine.set_para_info(para_data)
@@ -72,7 +73,8 @@ def main(
 if __name__ == '__main__':
     """"""
 
-    ts_code = "000001.SZ"
+    data_source = "yahoo"
+    ts_code = "399001.SZ"
     price_type = "close"
     start_time = datetime(2011, 10, 1)
     start_prob = 0.5
@@ -81,6 +83,7 @@ if __name__ == '__main__':
 
     # const_bs = test_main()
     prob_t, const_bs = main(
+        data_source,
         ts_code,
         price_type,
         start_time,
