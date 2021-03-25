@@ -48,6 +48,9 @@ def main(
     pts = est_engine.estimate_prob(start_time, start_prob)
     prob = pts["pt"].to_numpy()[-1]
 
+    est_engine.est_para.plot_bull_bear()
+    est_engine.est_prob.pts_plot(pts)
+
     market_info = MarketInfo(vt_symbol=ts_code)
     model_info = ModelData(vt_symbol=ts_code)
 
