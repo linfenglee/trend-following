@@ -12,6 +12,7 @@ import pandas_datareader.data as web
 
 from trend_following_objects import (
     ANNUAL_DAYS,
+    State,
     RegimeInfo,
     ParameterData
 )
@@ -79,16 +80,16 @@ class EstimationParameter(object):
         bear_price = start_price * (1 - self.bear_l)
         for price in self.close_array:
             if price > bull_price:
-                initial_state = "bull"
+                initial_state = State.Bull
                 break
             elif price < bear_price:
-                initial_state = "bear"
+                initial_state = State.Bear
                 break
-        if initial_state == "bull":
+        if initial_state == State.Bull:
             bull_date = self.close_array[self.close_array > bull_price].index[0]
             bull_point = self.close_array[self.close_array.index < bull_date].min()
             start_date = self.close_array[self.close_array == bull_point].index[0]
-        elif initial_state == "bear":
+        elif initial_state == State.Bear:
             bear_date = self.close_array[self.close_array < bear_price].index[0]
             bear_point = self.close_array[self.close_array.index < bear_date].max()
             start_date = self.close_array[self.close_array == bear_point].index[0]
@@ -112,7 +113,7 @@ class EstimationParameter(object):
         max_s, min_s = close_array[0], close_array[0]
         self.regimes.clear()
         for idx in close_array.index:
-            if signal == "bull":
+            if signal == State.Bull:
                 if close_array[idx] / max_s < 1 - self.bear_l:
                     closes = close_array[close_array.index <= idx]
                     start = closes[closes == min_s].index[-1]
@@ -127,11 +128,11 @@ class EstimationParameter(object):
                         "max_point": max_s
                     }
                     self.regimes.append(bull_info)
-                    signal = "bear"
+                    signal = State.Bear
                     min_s = close_array[idx]
                 else:
                     max_s = max(close_array[idx], max_s)
-            elif signal == "bear":
+            elif signal == State.Bear:
                 if self.close_array[idx] / min_s > 1 + self.bull_p:
                     closes = close_array[close_array.index <= idx]
                     start = closes[closes == max_s].index[-1]
@@ -146,7 +147,7 @@ class EstimationParameter(object):
                         "max_point": max_s
                     }
                     self.regimes.append(bear_info)
-                    signal = "bull"
+                    signal = State.Bull
                     max_s = close_array[idx]
                 else:
                     min_s = min(close_array[idx], min_s)
@@ -165,10 +166,10 @@ class EstimationParameter(object):
                 (self.data.index > start_date) & (self.data.index < end_date)
                 ]["log_rtn"].values.tolist()
             period = (pd.to_datetime(regime["end_date"]) - pd.to_datetime(regime["start_date"])).days / 365
-            if regime["state"] == "bull":
+            if regime["state"] == State.Bull:
                 bull_periods.append(period)
                 bull_data.extend(data_batch)
-            elif regime["state"] == "bear":
+            elif regime["state"] == State.Bear:
                 bear_periods.append(period)
                 bear_data.extend(data_batch)
             else:
@@ -224,7 +225,7 @@ class EstimationParameter(object):
 
         s_x, s_y = [], []
         for regime in self.regimes:
-            if regime["state"] == "bull":
+            if regime["state"] == State.Bull:
                 s_y.extend(
                     [regime["min_point"], regime["max_point"]]
                 )

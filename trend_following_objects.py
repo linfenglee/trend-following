@@ -1,8 +1,16 @@
+from enum import Enum
 from dataclasses import dataclass
 import numpy as np
 
 
 ANNUAL_DAYS = 240
+
+
+class State(Enum):
+    """"""
+
+    Bull = "bull"
+    Bear = "bear"
 
 
 @dataclass
