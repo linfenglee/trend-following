@@ -9,7 +9,6 @@ import plotly.graph_objs as go
 
 from trend_following_objects import (
     MarketInfo,
-    RegimeInfo,
     ModelData,
     ParameterData
 )
@@ -30,8 +29,6 @@ class TrendFollowingEngine(object):
 
         # Market Info
         self.rho = market_info.rho
-        # self.alpha = market_info.alpha
-        # self.theta = market_info.theta
         self.upper_boundary = market_info.upper_boundary
         self.lower_boundary = market_info.lower_boundary
 
@@ -232,18 +229,18 @@ class TrendFollowingEngine(object):
             (self.bull_mu - self.bear_mu) * p * (1 - p) / sigma, 2
         ) / self.dp / self.dp
         b1 = -((self.bull_lambda - self.bear_lambda) * p + self.bear_lambda) / self.dp
-        f_p = (self.bull_mu - self.bear_mu) * p + (self.bear_mu - self.rho - 0.5*sigma**2)
+        f_p = (self.bull_mu - self.bear_mu) * p + (self.bear_mu - self.rho - 0.5*np.power(sigma, 2))
 
         left = -eta + b1 * (b1 < 0)
         middle = 1 / self.dt + 2 * eta + np.abs(b1)
         right = -eta - b1 * (b1 > 0)
 
+        # get initial vn+1 from n+1 values
+        vn = deepcopy(grid_z[:, self.N])
+        vn1 = deepcopy(grid_z[:, self.N])
+
         # for loop
         for n in range(self.N - 1, -1, -1):
-
-            # get initial vn from n+1 values
-            vn1 = deepcopy(grid_z[:, n + 1])
-            vn = deepcopy(grid_z[:, n + 1])
 
             while True:
 
@@ -253,24 +250,26 @@ class TrendFollowingEngine(object):
 
                 b = vn1 / self.dt + self.upper_boundary * ind_upper + self.lower_boundary * ind_lower + f_p
 
-                self.matrix_A = diags(
+                matrix_a = diags(
                     [left[1:], middle+ind_upper+ind_lower, right[:-1]], offsets=[-1, 0, 1]
                 ).toarray()
 
                 # adjustment for boundary condition
-                self.matrix_A[0, 1] = 0
-                self.matrix_A[-1, -2] = 0
-                b[0] = self.matrix_A[0, 0] * self.lower_boundary
-                b[-1] = self.matrix_A[-1, -1] * self.upper_boundary
+                matrix_a[0, 1] = 0
+                matrix_a[-1, -2] = 0
+                b[0] = matrix_a[0, 0] * self.lower_boundary
+                b[-1] = matrix_a[-1, -1] * self.upper_boundary
 
-                vn_new = np.linalg.solve(self.matrix_A, b)
+                vn_new = np.linalg.solve(matrix_a, b)
 
                 if np.linalg.norm(vn_new - vn) <= self.epsilon:
+                    vn = vn_new
                     break
                 else:
                     vn = vn_new
 
             grid_z[:, n] = vn_new
+            vn1 = vn_new
 
             percentage = int((self.N - n) / self.N * 100)
             output = "#" * percentage + " " + f"{percentage}%"
