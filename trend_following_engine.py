@@ -1,7 +1,9 @@
 from typing import Tuple, List
+from copy import deepcopy
 import numpy as np
 import pandas as pd
 from pandas import DataFrame
+from scipy.sparse import diags
 import plotly
 import plotly.graph_objs as go
 
@@ -14,6 +16,9 @@ from trend_following_objects import (
 
 
 class TrendFollowingEngine(object):
+    """
+    Trend Following Engine
+    """
 
     def __init__(
             self,
@@ -25,8 +30,8 @@ class TrendFollowingEngine(object):
 
         # Market Info
         self.rho = market_info.rho
-        self.alpha = market_info.alpha
-        self.theta = market_info.theta
+        # self.alpha = market_info.alpha
+        # self.theta = market_info.theta
         self.upper_boundary = market_info.upper_boundary
         self.lower_boundary = market_info.lower_boundary
 
@@ -38,6 +43,7 @@ class TrendFollowingEngine(object):
         self.dp = model_info.dp
         self.epsilon = model_info.epsilon
         self.omega = model_info.omega
+        self.beta = model_info.beta
 
         # Parameter Info
         self.bull_mu = para_info.bull_mu
@@ -50,8 +56,13 @@ class TrendFollowingEngine(object):
 
         self.matrix_A = np.zeros([self.I-1, self.I-1])
 
+    def __str__(self):
+        """"""
+        return f"Trend Following Engine"
+
     def reset_matrix(self) -> None:
         """"""
+
         # matrix A[(I-1)(I-1)]
         self.matrix_A = np.zeros([self.I-1, self.I-1])
 
@@ -74,11 +85,11 @@ class TrendFollowingEngine(object):
         grid_z = np.zeros([self.I + 1, self.N + 1])
 
         # terminal condition:
-        grid_z[:, self.N] = np.log(1 - self.alpha)
+        grid_z[:, self.N] = self.lower_boundary
 
         # boundary condition
-        grid_z[0, :] = np.log(1 - self.alpha)
-        grid_z[self.I, :] = np.log(1 + self.theta)
+        grid_z[0, :] = self.lower_boundary
+        grid_z[self.I, :] = self.upper_boundary
 
         return grid_z
 
@@ -123,14 +134,16 @@ class TrendFollowingEngine(object):
 
         # assign
         for i in range(col):
-            ps = (z_array[:, i] == self.lower_boundary).sum() * self.dp
-            pb = 1 - (z_array[:, i] == self.upper_boundary).sum() * self.dp
+            ps = (z_array[:, i] <= self.lower_boundary).sum() * self.dp
+            pb = 1 - (z_array[:, i] >= self.upper_boundary).sum() * self.dp
             bs_region.loc[i * self.dt] = [ps, pb]
         
         return bs_region
 
     def fully_implicit_fdm(self, market_regime: str) -> np.array:
-        """"""
+        """
+        Fully Implicit FDM
+        """
 
         # get sigma for calculation
         sigma = self.get_calc_sigma(market_regime)
@@ -199,6 +212,72 @@ class TrendFollowingEngine(object):
 
         return grid_z
 
+    def penalty_method(self, market_regime: str) -> np.array:
+        """
+        Penalty Method
+        """
+
+        # get sigma for calculation
+        sigma = self.get_calc_sigma(market_regime)
+
+        # initialize Z Grid
+        grid_z = self.init_grid_z()
+
+        p = np.array([
+            self.dp * i for i in range(self.I + 1)
+        ])
+
+        # upwind treatment
+        eta = 0.5 * np.power(
+            (self.bull_mu - self.bear_mu) * p * (1 - p) / sigma, 2
+        ) / self.dp / self.dp
+        b1 = -((self.bull_lambda - self.bear_lambda) * p + self.bear_lambda) / self.dp
+        f_p = (self.bull_mu - self.bear_mu) * p + (self.bear_mu - self.rho - 0.5*sigma**2)
+
+        left = -eta + b1 * (b1 < 0)
+        middle = 1 / self.dt + 2 * eta + np.abs(b1)
+        right = -eta - b1 * (b1 > 0)
+
+        # for loop
+        for n in range(self.N - 1, -1, -1):
+
+            # get initial vn from n+1 values
+            vn1 = deepcopy(grid_z[:, n + 1])
+            vn = deepcopy(grid_z[:, n + 1])
+
+            while True:
+
+                # construct indicator function
+                ind_upper = self.beta * (vn > self.upper_boundary)
+                ind_lower = self.beta * (vn < self.lower_boundary)
+
+                b = vn1 / self.dt + self.upper_boundary * ind_upper + self.lower_boundary * ind_lower + f_p
+
+                self.matrix_A = diags(
+                    [left[1:], middle+ind_upper+ind_lower, right[:-1]], offsets=[-1, 0, 1]
+                ).toarray()
+
+                # adjustment for boundary condition
+                self.matrix_A[0, 1] = 0
+                self.matrix_A[-1, -2] = 0
+                b[0] = self.matrix_A[0, 0] * self.lower_boundary
+                b[-1] = self.matrix_A[-1, -1] * self.upper_boundary
+
+                vn_new = np.linalg.solve(self.matrix_A, b)
+
+                if np.linalg.norm(vn_new - vn) <= self.epsilon:
+                    break
+                else:
+                    vn = vn_new
+
+            grid_z[:, n] = vn_new
+
+            percentage = int((self.N - n) / self.N * 100)
+            output = "#" * percentage + " " + f"{percentage}%"
+            print(output, end="\r")
+
+        return grid_z
+
     @staticmethod
     def bs_plot(bs_data: np.array) -> None:
         """"""
@@ -236,8 +315,12 @@ class TrendFollowingEngine(object):
         # bear_z_grid = self.fully_implicit_fdm("bear")
         # bear_bs = self.prob_bs(bear_z_grid)
 
-        # get constant
-        const_z_grid = self.fully_implicit_fdm("const")
+        # # get constant via fully implicit FDM
+        # const_z_grid = self.fully_implicit_fdm("const")
+        # const_bs = self.prob_bs(const_z_grid)
+
+        # get constant via penalty method FDM
+        const_z_grid = self.penalty_method("const")
         const_bs = self.prob_bs(const_z_grid)
 
         # plot sell & buy region

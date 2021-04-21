@@ -69,15 +69,16 @@ class ModelData(BaseData):
 
     T: float = 1
     I: int = 2_000
-    N: int = 20_000
+    N: int = 1_000
 
     def __post_init__(self):
         """"""
         self.dt = self.T / self.N
         self.dp = 1 / self.I
 
-    epsilon: float = 1 / 10_000_000
-    omega: float = 1.6
+    epsilon: float = 1.0e-8
+    omega: float = 1.6   # relax parameter
+    beta: float = 1.0e7  # penalty method
 
 
 @dataclass
