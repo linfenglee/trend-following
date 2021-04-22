@@ -1,4 +1,4 @@
-from typing import Tuple, List
+from typing import Tuple
 from copy import deepcopy
 import numpy as np
 import pandas as pd
@@ -8,6 +8,7 @@ import plotly
 import plotly.graph_objs as go
 
 from trend_following_objects import (
+    State,
     MarketInfo,
     ModelData,
     ParameterData
@@ -57,47 +58,103 @@ class TrendFollowingEngine(object):
         """"""
         return f"Trend Following Engine"
 
+    def calc_p0(self, market_regime: State) -> float:
+        """
+        ps -> p0 when t -> T
+        """
+
+        sigma = self.get_calc_sigma(market_regime)
+        denominator = self.bull_mu - self.bear_mu
+        nominator = self.rho - self.bear_mu + np.power(sigma, 2) / 2
+        p0 = nominator / denominator
+
+        return p0
+
+    def calc_a(self) -> float:
+        """
+        when t > a / (mu1 - rho - sigma^2/2) such that pb(t) = 1
+        """
+
+        a = np.log(self.upper_boundary / self.lower_boundary)
+        return a
+
+    def calc_delta_a(self, market_regime: State) -> float:
+        """
+        when t > a / (mu1 - rho - sigma^2/2) such that pb(t) = 1
+        """
+
+        a = self.calc_a()
+        sigma = self.get_calc_sigma(market_regime)
+        delta = a / (self.bull_mu - self.rho - np.power(sigma, 2) / 2)
+
+        return delta
+
     def reset_matrix(self) -> None:
         """"""
 
         # matrix A[(I-1)(I-1)]
         self.matrix_A = np.zeros([self.I-1, self.I-1])
 
-    def get_calc_sigma(self, market_regime: str) -> float:
+    def get_calc_sigma(self, market_regime: State) -> float:
         """"""
 
-        if market_regime == "bull":
+        if market_regime == State.Bull:
             sigma = self.bull_sigma
-        elif market_regime == "bear":
+        elif market_regime == State.Bear:
             sigma = self.bear_sigma
         else:
             sigma = self.const_sigma
 
         return sigma
 
-    def init_grid_z(self) -> np.array:
-        """"""
+    # def init_grid_z(self) -> np.array:
+    #     """"""
+    #
+    #     # initialization:
+    #     grid_z = np.zeros([self.I + 1, self.N + 1])
+    #
+    #     # terminal condition:
+    #     grid_z[:, self.N] = self.lower_boundary
+    #
+    #     # boundary condition
+    #     grid_z[0, :] = self.lower_boundary
+    #     grid_z[self.I, :] = self.upper_boundary
+    #
+    #     return grid_z
 
-        # initialization:
-        grid_z = np.zeros([self.I + 1, self.N + 1])
+    def prob_bs(self, vn: np.array) -> Tuple:
+        """
+        Calculate the bug & sell probability
+        """
 
-        # terminal condition:
-        grid_z[:, self.N] = self.lower_boundary
+        # initialize
+        add = (self.I + 1 - len(vn)) / 2
 
-        # boundary condition
-        grid_z[0, :] = self.lower_boundary
-        grid_z[self.I, :] = self.upper_boundary
+        ps = ((vn <= self.lower_boundary).sum() + add) * self.dp
+        pb = 1 - ((vn >= self.upper_boundary).sum() + add) * self.dp
 
-        return grid_z
+        return ps, pb
 
-    def projected_sor(self, b, vector_v, n):
+    def show_progress(self, n: int) -> None:
+        """
+        Show the progress
+        """
+
+        percentage = int((self.N - n) / self.N * 100)
+        output = "#" * percentage + " " + f"{percentage}%"
+        print(output, end="\r")
+
+        return
+
+    def projected_sor(self, b: np.array, vector_v: np.array) -> np.array:
         """
         Implement Projected SOR method to find buy & sell boundary.
         """
 
-        converged = False
         x0 = vector_v
+        n = len(vector_v)
         x1 = np.zeros(n)
+        converged = False
         while not converged:
             for i in range(n):
                 if i == 0:
@@ -120,26 +177,9 @@ class TrendFollowingEngine(object):
         
         return vector_vn
 
-    def prob_bs(self, z_array: np.array) -> np.array:
+    def fully_implicit_fdm(self, market_regime: State) -> DataFrame:
         """
-        Calculate the bug & sell probability
-        """
-
-        # initialize
-        row, col = z_array.shape
-        bs_region = pd.DataFrame(columns=['p_s', 'p_b'])
-
-        # assign
-        for i in range(col):
-            ps = (z_array[:, i] <= self.lower_boundary).sum() * self.dp
-            pb = 1 - (z_array[:, i] >= self.upper_boundary).sum() * self.dp
-            bs_region.loc[i * self.dt] = [ps, pb]
-        
-        return bs_region
-
-    def fully_implicit_fdm(self, market_regime: str) -> np.array:
-        """
-        Fully Implicit FDM
+        Fully Implicit Finite Difference Method
         """
 
         # get sigma for calculation
@@ -147,9 +187,6 @@ class TrendFollowingEngine(object):
 
         # initialize A matrix
         self.reset_matrix()
-
-        # initialize Z Grid
-        grid_z = self.init_grid_z()
 
         # F = np.zeros(I-1)
         f_p = np.zeros(self.I-1)
@@ -194,22 +231,28 @@ class TrendFollowingEngine(object):
                     f_u = -para_a
 
         # for loop
+        bs_region = pd.DataFrame(columns=['p_s', 'p_b'])
+        bs_region.loc[self.N] = [1, 1]
+        vector_v = np.array([self.lower_boundary for _ in range(self.I-1)])
         for n in range(self.N-1, -1, -1):
-            vector_v = grid_z[1:self.I, n+1]
-            size = len(vector_v)
+
+            # adjust vector b
             b = vector_v + f_p * self.dt
             b[0] = b[0] + f_d * self.lower_boundary
             b[-1] = b[-1] + f_u * self.upper_boundary
-            vector_vn = self.projected_sor(b, vector_v, size)
-            grid_z[1:self.I, n] = vector_vn.reshape([self.I-1])
 
-            percentage = int((self.N - n) / self.N * 100)
-            output = "#" * percentage + " " + f"{percentage}%"
-            print(output, end="\r")
+            vector_vn = self.projected_sor(b, vector_v)
+            bs_region.loc[n] = self.prob_bs(vector_vn)
 
-        return grid_z
+            vector_v = vector_vn
 
-    def penalty_method(self, market_regime: str) -> np.array:
+            self.show_progress(n)
+
+        bs_region.index = bs_region.index / self.N
+
+        return bs_region
+
+    def penalty_method(self, market_regime: State) -> DataFrame:
         """
         Penalty Method
         """
@@ -217,18 +260,13 @@ class TrendFollowingEngine(object):
         # get sigma for calculation
         sigma = self.get_calc_sigma(market_regime)
 
-        # initialize Z Grid
-        grid_z = self.init_grid_z()
-
-        p = np.array([
-            self.dp * i for i in range(self.I + 1)
-        ])
+        p = np.array([self.dp * i for i in range(self.I + 1)])
 
         # upwind treatment
         eta = 0.5 * np.power(
             (self.bull_mu - self.bear_mu) * p * (1 - p) / sigma, 2
-        ) / self.dp / self.dp
-        b1 = -((self.bull_lambda - self.bear_lambda) * p + self.bear_lambda) / self.dp
+        ) / np.power(self.dp, 2)
+        b1 = (-(self.bull_lambda + self.bear_lambda) * p + self.bear_lambda) / self.dp
         f_p = (self.bull_mu - self.bear_mu) * p + (self.bear_mu - self.rho - 0.5*np.power(sigma, 2))
 
         left = -eta + b1 * (b1 < 0)
@@ -236,10 +274,12 @@ class TrendFollowingEngine(object):
         right = -eta - b1 * (b1 > 0)
 
         # get initial vn+1 from n+1 values
-        vn = deepcopy(grid_z[:, self.N])
-        vn1 = deepcopy(grid_z[:, self.N])
+        vn = np.array([self.lower_boundary for _ in range(self.I+1)])
+        vn1 = np.array([self.lower_boundary for _ in range(self.I+1)])
 
         # for loop
+        bs_region = pd.DataFrame(columns=['p_s', 'p_b'])
+        bs_region.loc[self.N] = [1, 1]
         for n in range(self.N - 1, -1, -1):
 
             while True:
@@ -250,17 +290,17 @@ class TrendFollowingEngine(object):
 
                 b = vn1 / self.dt + self.upper_boundary * ind_upper + self.lower_boundary * ind_lower + f_p
 
-                matrix_a = diags(
+                self.matrix_A = diags(
                     [left[1:], middle+ind_upper+ind_lower, right[:-1]], offsets=[-1, 0, 1]
                 ).toarray()
 
                 # adjustment for boundary condition
-                matrix_a[0, 1] = 0
-                matrix_a[-1, -2] = 0
-                b[0] = matrix_a[0, 0] * self.lower_boundary
-                b[-1] = matrix_a[-1, -1] * self.upper_boundary
+                self.matrix_A[0, 1] = 0
+                self.matrix_A[-1, -2] = 0
+                b[0] = self.matrix_A[0, 0] * self.lower_boundary
+                b[-1] = self.matrix_A[-1, -1] * self.upper_boundary
 
-                vn_new = np.linalg.solve(matrix_a, b)
+                vn_new = np.linalg.solve(self.matrix_A, b)
 
                 if np.linalg.norm(vn_new - vn) <= self.epsilon:
                     vn = vn_new
@@ -268,18 +308,20 @@ class TrendFollowingEngine(object):
                 else:
                     vn = vn_new
 
-            grid_z[:, n] = vn_new
+            bs_region.loc[n] = self.prob_bs(vn_new)
             vn1 = vn_new
 
-            percentage = int((self.N - n) / self.N * 100)
-            output = "#" * percentage + " " + f"{percentage}%"
-            print(output, end="\r")
+            self.show_progress(n)
 
-        return grid_z
+        bs_region.index = bs_region.index / self.N
+
+        return bs_region
 
     @staticmethod
     def bs_plot(bs_data: np.array) -> None:
-        """"""
+        """
+        Plot Buy Boundary & Sell Boundary
+        """
 
         trace1 = go.Scatter(
             x=bs_data.index,
@@ -304,7 +346,9 @@ class TrendFollowingEngine(object):
         plotly.offline.plot(fig, filename='bs_region.html')
 
     def main(self) -> DataFrame:
-        """"""
+        """
+        Main Function to Implement Trend Following Engine
+        """
 
         # # get bull
         # bull_z_grid = self.fully_implicit_fdm("bull")
@@ -315,12 +359,10 @@ class TrendFollowingEngine(object):
         # bear_bs = self.prob_bs(bear_z_grid)
 
         # # get constant via fully implicit FDM
-        # const_z_grid = self.fully_implicit_fdm("const")
-        # const_bs = self.prob_bs(const_z_grid)
+        # const_bs = self.fully_implicit_fdm("const")
 
         # get constant via penalty method FDM
-        const_z_grid = self.penalty_method("const")
-        const_bs = self.prob_bs(const_z_grid)
+        const_bs = self.penalty_method(State.Constant)
 
         # plot sell & buy region
         self.bs_plot(const_bs)
@@ -329,7 +371,9 @@ class TrendFollowingEngine(object):
 
 
 if __name__ == '__main__':
-    """"""
+    """
+    An example for trend following engine
+    """
 
     test_market_info = MarketInfo()
     test_model_info = ModelData()

@@ -11,6 +11,7 @@ class State(Enum):
 
     Bull = "bull"
     Bear = "bear"
+    Constant = "constant"
 
 
 @dataclass
