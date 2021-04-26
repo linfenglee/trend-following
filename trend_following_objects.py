@@ -77,7 +77,7 @@ class ModelData(BaseData):
         self.dt = self.T / self.N
         self.dp = 1 / self.I
 
-    epsilon: float = 1.0e-8
+    epsilon: float = 1.0e-6
     omega: float = 1.6   # relax parameter
     beta: float = 1.0e7  # penalty method
 
@@ -96,3 +96,13 @@ class ParameterData(BaseData):
 
     bull_lambda: float = 0.36
     bear_lambda: float = 2.53
+
+
+@dataclass
+class BoundaryData(BaseData):
+    """
+    Buy & Sell Boundaries in trend following strategy
+    """
+
+    sell_boundary: float = 0
+    buy_boundary: float = 0

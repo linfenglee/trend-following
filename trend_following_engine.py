@@ -1,9 +1,13 @@
 from typing import Tuple
+import time
 from copy import deepcopy
 import numpy as np
 import pandas as pd
 from pandas import DataFrame
 from scipy.sparse import diags
+from scipy.sparse.linalg import inv
+from scipy.linalg import solve_banded
+from scipy.sparse.linalg import spsolve
 import plotly
 import plotly.graph_objs as go
 
@@ -11,7 +15,8 @@ from trend_following_objects import (
     State,
     MarketInfo,
     ModelData,
-    ParameterData
+    ParameterData,
+    BoundaryData
 )
 
 
@@ -27,6 +32,9 @@ class TrendFollowingEngine(object):
             para_info: ParameterData
     ):
         """"""
+
+        # vt_symbol
+        self.vt_symbol = market_info.vt_symbol
 
         # Market Info
         self.rho = market_info.rho
@@ -269,9 +277,11 @@ class TrendFollowingEngine(object):
         b1 = (-(self.bull_lambda + self.bear_lambda) * p + self.bear_lambda) / self.dp
         f_p = (self.bull_mu - self.bear_mu) * p + (self.bear_mu - self.rho - 0.5*np.power(sigma, 2))
 
+        # initialize and adjust sparse diag values
         left = -eta + b1 * (b1 < 0)
         middle = 1 / self.dt + 2 * eta + np.abs(b1)
         right = -eta - b1 * (b1 > 0)
+        left[-1], right[0] = 0, 0
 
         # get initial vn+1 from n+1 values
         vn = np.array([self.lower_boundary for _ in range(self.I+1)])
@@ -289,20 +299,21 @@ class TrendFollowingEngine(object):
                 ind_lower = self.beta * (vn < self.lower_boundary)
 
                 b = vn1 / self.dt + self.upper_boundary * ind_upper + self.lower_boundary * ind_lower + f_p
-
+                middle_first = middle[0] + ind_lower[0] + ind_lower[0]
+                middle_last = middle[-1] + ind_lower[-1] + ind_upper[-1]
                 self.matrix_A = diags(
-                    [left[1:], middle+ind_upper+ind_lower, right[:-1]], offsets=[-1, 0, 1]
-                ).toarray()
+                    [left[1:], middle+ind_upper+ind_lower, right[:-1]],
+                    offsets=[-1, 0, 1], shape=(self.I+1, self.I+1), format="csc"
+                )
 
                 # adjustment for boundary condition
-                self.matrix_A[0, 1] = 0
-                self.matrix_A[-1, -2] = 0
-                b[0] = self.matrix_A[0, 0] * self.lower_boundary
-                b[-1] = self.matrix_A[-1, -1] * self.upper_boundary
+                b[0] = middle_first * self.lower_boundary
+                b[-1] = middle_last * self.upper_boundary
 
-                vn_new = np.linalg.solve(self.matrix_A, b)
+                vn_new = spsolve(self.matrix_A, b)
+                iter_error = np.linalg.norm(vn_new - vn) / np.linalg.norm(vn)
 
-                if np.linalg.norm(vn_new - vn) <= self.epsilon:
+                if iter_error <= self.epsilon:
                     vn = vn_new
                     break
                 else:
@@ -317,8 +328,20 @@ class TrendFollowingEngine(object):
 
         return bs_region
 
+    def get_boundaries(self, bs_data: DataFrame) -> BoundaryData:
+        """"""
+
+        sell_boundary = bs_data["p_s"].to_numpy()[-1]
+        buy_boundary = bs_data["p_b"].to_numpy()[-1]
+        boundary_data = BoundaryData(
+            vt_symbol=self.vt_symbol, sell_boundary=sell_boundary, buy_boundary=buy_boundary
+        )
+        # print(f"Sell Boundary: {sell_boundary} | Buy Boundary: {buy_boundary}")
+
+        return boundary_data
+
     @staticmethod
-    def bs_plot(bs_data: np.array) -> None:
+    def bs_plot(bs_data: DataFrame) -> None:
         """
         Plot Buy Boundary & Sell Boundary
         """
@@ -345,7 +368,7 @@ class TrendFollowingEngine(object):
 
         plotly.offline.plot(fig, filename='bs_region.html')
 
-    def main(self) -> DataFrame:
+    def main(self) -> BoundaryData:
         """
         Main Function to Implement Trend Following Engine
         """
@@ -367,7 +390,10 @@ class TrendFollowingEngine(object):
         # plot sell & buy region
         self.bs_plot(const_bs)
 
-        return const_bs
+        # get buy & sell boundary
+        boundary_data = self.get_boundaries(const_bs)
+
+        return boundary_data
 
 
 if __name__ == '__main__':
@@ -379,9 +405,9 @@ if __name__ == '__main__':
     test_model_info = ModelData()
     test_para_info = ParameterData()
 
-    trend_following = TrendFollowingEngine(
+    trend_following_engine = TrendFollowingEngine(
         test_market_info, test_model_info, test_para_info
     )
 
-    constant_bs = trend_following.main()
+    bs_boundaries = trend_following_engine.main()
 
