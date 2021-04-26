@@ -148,7 +148,10 @@ class TrendFollowingEngine(object):
 
         percentage = int((self.N - n) / self.N * 100)
         output = "#" * percentage + " " + f"{percentage}%"
-        print(output, end="\r")
+        if percentage < 100:
+            print(output, end="\r")
+        else:
+            print(output, end="\n")
 
         return
 
@@ -334,7 +337,7 @@ class TrendFollowingEngine(object):
         boundary_data = BoundaryData(
             vt_symbol=self.vt_symbol, sell_boundary=sell_boundary, buy_boundary=buy_boundary
         )
-        # print(f"Sell Boundary: {sell_boundary} | Buy Boundary: {buy_boundary}")
+        print(f"Sell Boundary: {sell_boundary} | Buy Boundary: {buy_boundary}")
 
         return boundary_data
 
