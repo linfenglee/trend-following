@@ -244,10 +244,8 @@ class EstimationParameter(object):
 
         return s_x, s_y
 
-    def plot_bull_bear(self) -> None:
-        """
-        Plot Bull Bear Points in Price Figure
-        """
+    def initialize_plot_trace(self):
+        """"""
 
         # find bull bear regimes
         self.find_bull_bear()
@@ -266,17 +264,24 @@ class EstimationParameter(object):
             x=s_x,
             y=s_y,
             mode="markers",
-            name="point"
+            name="turning point"
         )
 
-        data = [trace1, trace2]
+        return trace1, trace2
+
+    def plot_bull_bear(self) -> None:
+        """
+        Plot Bull Bear Points in Price Figure
+        """
+
+        trace1, trace2 = self.initialize_plot_trace()
 
         layout = go.Layout(
             legend={"x": 1, "y": 1},
             title=f"{self.vt_symbol} Bull Bear Regimes"
         )
 
-        fig = go.Figure(data=data, layout=layout)
+        fig = go.Figure(data=[trace1, trace2], layout=layout)
 
         # plotly.offline.init_notebook_mode()
         # plotly.offline.iplot(fig, filename='scatter-mode')

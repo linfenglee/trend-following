@@ -5,8 +5,6 @@ import numpy as np
 import pandas as pd
 from pandas import DataFrame
 from scipy.sparse import diags
-from scipy.sparse.linalg import inv
-from scipy.linalg import solve_banded
 from scipy.sparse.linalg import spsolve
 import plotly
 import plotly.graph_objs as go
