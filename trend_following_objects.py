@@ -65,7 +65,7 @@ class RegimeInfo(BaseData):
 @dataclass
 class ModelData(BaseData):
     """
-    Basic setting to implement fully-implicit finite difference method
+    Basic setting to implement FDM
     """
 
     T: float = 1

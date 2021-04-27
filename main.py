@@ -11,6 +11,7 @@ from trend_following_objects import (
 )
 from trend_following_engine import TrendFollowingEngine
 from trend_following_estimate import EstimationEngine, EstimationParameter
+from trend_following_backtesting import BacktestEngine
 
 
 def test_main() -> BoundaryData:
@@ -109,6 +110,9 @@ def main(
         print(f"Sell {ts_code} Tomorrow")
     else:
         print(f"Hold or Close {ts_code} Tomorrow")
+
+    backtesting_engine = BacktestEngine(pts, bs_boundary)
+    backtesting_engine.backtest_main(initial_pos=0)
 
     return pts, bs_boundary
 

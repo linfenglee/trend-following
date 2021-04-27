@@ -357,13 +357,15 @@ class EstimationProb(object):
 
         lns = np.log(self.price_array[self.price_array.index >= start_date])
         dts = lns.index.to_numpy()
-        pts = pd.DataFrame(columns=["pt", "dlns"])
+        pts = pd.DataFrame(columns=["pt", "price", "return", "dlns"])
         pt = start_p
-        for i in range(1, len(dts), 1):
-            pre_dt, dt = dts[i-1], dts[i]
+        for i in range(1, len(dts) - 1, 1):
+            pre_dt, dt, post_dt = dts[i-1], dts[i], dts[i+1]
+            price, post_price = np.exp(lns[dt]), np.exp(lns[post_dt])
+            ret = post_price / price - 1
             dlns = lns[dt] - lns[pre_dt]
             new_pt = self.update_pt(pt, dlns)
-            pts.loc[dt] = [new_pt, dlns]
+            pts.loc[dt] = [new_pt, price, ret, dlns]
             pt = new_pt
 
         return pts
